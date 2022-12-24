@@ -7,15 +7,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os:
+          # - ubuntu-latest
+          # - macos-latest
+          - windows-latest
         python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
-        include:
-          - os: macos-latest
-            python-version: "3.10"
-            openssl-version: "3"
-          - os: macos-latest
-            python-version: "3.11"
-            openssl-version: "3"
+        # include:
+        #   - os: macos-latest
+        #     python-version: "3.10"
+        #     openssl-version: "3"
+        #   - os: macos-latest
+        #     python-version: "3.11"
+        #     openssl-version: "3"
         exclude:
           # test hangs on these combination
           - os: windows-latest
@@ -31,6 +34,7 @@ jobs:
     env:
       liboqs_version: '0.7.2'
       nettle_version: nettle_3.8.1_release_20220727
+      vcpkg_packages: libsodium:x64-windows
 
     steps:
       - name: Checkout asyncssh
@@ -54,6 +58,25 @@ jobs:
             asyncssh/setup.py
             asyncssh/tox.ini
 
+      - name: Determine vcpkg cache key and path
+        if: ${{ runner.os == 'Windows' }}
+        id: vcpkg-cache
+        shell: pwsh
+        run: |
+          $vcpkg_binary_cache = "${{ github.workspace }}\vcpkg_cache"
+          mkdir "$vcpkg_binary_cache"
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> $env:GITHUB_ENV
+          vcpkg install --dry-run ${{ env.vcpkg_packages }} > vcpkg-dry-run.txt
+
+      - name: Set up vcpkg cache
+        uses: actions/cache@v3
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          path: |
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ hashFiles('vcpkg-dry-run.txt') }}
+          restore-keys: vcpkg-
+
       - name: Set up ccache for liboqs (Linux)
         uses: hendrikmuhs/ccache-action@v1.2
         if: ${{ runner.os == 'Linux' }}
@@ -72,13 +95,19 @@ jobs:
         if: ${{ runner.os == 'macOS' && matrix.openssl-version == '3' }}
         run: echo "/usr/local/opt/openssl@3/bin" >> $GITHUB_PATH
 
+      - name: Install Windows dependencies
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          vcpkg install ${{ env.vcpkg_packages }}
+          get-item "$env:VCPKG_INSTALLATION_ROOT\installed\*\bin" | % { $_.FullName } >> $env:GITHUB_PATH
+
       - name: Install nettle (Windows)
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
           curl -fLO https://github.com/ShiftMediaProject/nettle/releases/download/${{ env.nettle_version }}/libnettle_${{ env.nettle_version }}_msvc17.zip
-          Expand-Archive libnettle_${{ env.nettle_version }}_msvc17.zip nettle
-          cp nettle\bin\x64\*.dll "$env:Python_ROOT_DIR"
+          expand-archive libnettle_${{ env.nettle_version }}_msvc17.zip nettle
+          (get-item nettle\bin\x64).FullName >> $env:GITHUB_PATH
 
       - name: Install liboqs (Linux)
         if: ${{ runner.os == 'Linux' }}
@@ -98,7 +127,7 @@ jobs:
         run: |
           cmake -GNinja -Bbuild . -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON -DOQS_DIST_BUILD=ON
           cmake --build build
-          cp build\bin\oqs.dll "$env:Python_ROOT_DIR"
+          (get-item build\bin).FullName >> $env:GITHUB_PATH
 
       - name: Install Python dependencies
         run: pip install tox
