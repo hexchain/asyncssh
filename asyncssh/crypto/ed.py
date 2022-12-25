@@ -46,7 +46,7 @@ curve25519_available = backend.x25519_supported()
 curve448_available = backend.x448_supported()
 
 
-if ed25519_available or ed448_available: # pragma: no branch
+if ed25519_available or ed448_available:
     class _EdDSAKey(CryptoKey):
         """Base class for shim around PyCA for EdDSA keys"""
 
@@ -142,7 +142,7 @@ if ed25519_available or ed448_available: # pragma: no branch
                 return True
             except InvalidSignature:
                 return False
-else: # pragma: no cover
+else:
     class _EdDSANaclKey:
         """Base class for shim around libnacl for EdDSA keys"""
 
@@ -230,7 +230,7 @@ else: # pragma: no cover
         pass
 
 
-if curve25519_available: # pragma: no branch
+if curve25519_available:
     class Curve25519DH:
         """Curve25519 Diffie Hellman implementation based on PyCA"""
 
@@ -253,7 +253,7 @@ if curve25519_available: # pragma: no branch
             """Return the shared key from the peer's public key as bytes"""
 
             return int.from_bytes(self.get_shared_bytes(peer_public), 'big')
-else: # pragma: no cover
+else:
     class Curve25519DH: # type: ignore
         """Curve25519 Diffie Hellman implementation based on libnacl"""
 
